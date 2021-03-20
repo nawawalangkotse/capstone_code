@@ -1,0 +1,672 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+library(tidyverse)
+library(foreign)
+library(Matching)
+library(fastDummies)
+library(ggplot2)
+library(pricesensitivitymeter)
+library(Hmisc)
+library(dplyr)
+library(plyr)
+library(rgenoud)
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+what <- pwyw_code_former
+fix <- fpcode_values_arranged
+big <- OCEAN_storage
+```{r}
+# NEW VARIABLES
+  
+  #PWYW DATASET
+
+  # converting sex, ethnicity and education into dummy variables / quantitative variables
+  # sex
+ what <- dummy_cols(what, select_columns = "sex")
+ what <- what[, -c(26, 27)]
+ names(what)[25] <- "female"
+  # ethnicity
+ what <- dummy_cols(what, select_columns = "ethnicity")
+ what <- what[, -c(27, 29, 30, 31)]
+ names(what)[26] <- "asian"
+ names(what)[27] <- "caucasian"
+  # country of residence 
+ what <- dummy_cols(what, select_columns = "country")
+ what <- what[, -29]
+ names(what)[28] <- "india"
+  # education 
+ what$edtier <- revalue(what$educ, c
+    ("No schooling completed"="1", 
+      "Nursery school to 8th grade"="2", 
+      "Some high school, no diploma"="3", 
+      "High school graduate, diploma or the equivalent"="4", 
+      "Some college credit, no degree"="5",
+      "Trade/technical/vocational training"="6", 
+      "Associate degree"="7", 
+      "Bachelor's degree"="8", 
+      "Master's degree"="9", 
+      "Professional degree"="10", 
+      "Doctorate degree"="11"))
+ what <- transform(what, edtier = as.numeric(edtier))
+ 
+  # OCEAN traits
+ what$O <- what$Opos - what$Oneg + 6
+ what$C <- what$Cpos - what$Cneg + 6
+ what$E <- what$Epos - what$Eneg + 6 
+ what$A <- what$Apos - what$Aneg + 6
+ what$N <- what$Npos - what$Nneg + 6 
+ 
+ # revalue _commit variables in terms of likelihood of purchase
+what <- transform(what, shirt_commit = as.factor(shirt_commit)) 
+what$shirt_likely <- revalue(what$shirt_commit, c
+    ("1"="0.2", 
+     "2"="0.35", 
+     "3"="0.5", 
+     "4"="0.65", 
+     "5"="0.8")) 
+what$shirt_likely <- as.numeric(as.character(what$shirt_likely))
+
+what <- transform(what, paint_commit = as.factor(paint_commit)) 
+what$paint_likely <- revalue(what$paint_commit, c
+     ("1"="0.2", 
+      "2"="0.35", 
+      "3"="0.5", 
+      "4"="0.65", 
+      "5"="0.8")) 
+what$paint_likely <- as.numeric(as.character(what$paint_likely))
+
+what <- transform(what, salad_commit = as.factor(salad_commit)) 
+what$salad_likely <- revalue(what$salad_commit, c
+     ("1"="0.2", 
+      "2"="0.35", 
+      "3"="0.5", 
+      "4"="0.65", 
+      "5"="0.8"))
+what$salad_likely <- as.numeric(as.character(what$salad_likely))
+
+  # purchasing power - take WTP as a function of purchasing power
+what$shirt_wtp <- what$shirt_pwyw / what$pur_pwr * what$shirt_likely
+what$paint_wtp <- what$paint_pwyw / what$pur_pwr * what$paint_likely
+what$salad_wtp <- what$salad_pwyw / what$pur_pwr * what$salad_likely
+  #this measure can be overbiased for samples that have extremely low purchasing power - because even if the relative price of items can go down, they don't go down to 0. individuals who provide low values will end up with a wtp very close to 1, which can confuse results 
+  #also consider that free-riders and low-payers are more likely to say that they will purchase the item because they can pay nothing for it
+  #be sure to highlight
+  
+
+  # removing worker ID and timestamp variables for cleanliness
+what <- what[, -c(1, 23)]
+
+  
+  #FIXED PRICE DATASET
+
+  #removing worker ID and timestamp variables for cleanliness
+ fix <- fix[, -c(1, 32)]
+
+  # converting sex, ethnicity and education into dummy variables / quantitative variables
+  # sex
+ fix <- dummy_cols(fix, select_columns = "sex")
+ fix <- fix[, -c(33, 34)]
+ names(fix)[32] <- "female"
+  # ethnicity
+ fix <- dummy_cols(fix, select_columns = "ethnicity")
+ fix <- fix[, -c(34, 36, 37, 38)]
+ names(fix)[33] <- "asian"
+ names(fix)[34] <- "caucasian"
+  # country of residence 
+ fix <- dummy_cols(fix, select_columns = "country")
+ fix <- fix[, -36]
+ names(fix)[35] <- "india"
+  # education 
+ fix$edtier <- revalue(fix$educ, c
+    ("No schooling completed"="1", 
+      "Nursery school to 8th grade"="2", 
+      "Some high school, no diploma"="3", 
+      "High school graduate, diploma or the equivalent"="4", 
+      "Some college credit, no degree"="5",
+      "Trade/technical/vocational training"="6", 
+      "Associate degree"="7", 
+      "Bachelor's degree"="8", 
+      "Master's degree"="9", 
+      "Professional degree"="10", 
+      "Doctorate degree"="11"))
+ fix <- transform(fix, edtier = as.numeric(edtier))
+ 
+  # OCEAN traits
+ fix$O <- fix$Opos - fix$Oneg + 6
+ fix$C <- fix$Cpos - fix$Cneg + 6
+ fix$E <- fix$Epos - fix$Eneg + 6 
+ fix$A <- fix$Apos - fix$Aneg + 6
+ fix$N <- fix$Npos - fix$Nneg + 6 
+
+  # revalue _commit variables in terms of likelihood of purchase
+fix <- transform(fix, shirt_commit = as.factor(shirt_commit)) 
+fix$shirt_likely <- revalue(fix$shirt_commit, c
+    ("1"="0.2", 
+     "2"="0.35", 
+     "3"="0.5", 
+     "4"="0.65", 
+     "5"="0.8")) 
+fix$shirt_likely <- as.numeric(as.character(fix$shirt_likely))
+
+fix <- transform(fix, paint_commit = as.factor(paint_commit)) 
+fix$paint_likely <- revalue(fix$paint_commit, c
+     ("1"="0.2", 
+      "2"="0.35", 
+      "3"="0.5", 
+      "4"="0.65", 
+      "5"="0.8")) 
+fix$paint_likely <- as.numeric(as.character(fix$paint_likely))
+
+fix <- transform(fix, salad_commit = as.factor(salad_commit)) 
+fix$salad_likely <- revalue(fix$salad_commit, c
+     ("1"="0.2", 
+      "2"="0.35", 
+      "3"="0.5", 
+      "4"="0.65", 
+      "5"="0.8"))
+fix$salad_likely <- as.numeric(as.character(fix$salad_likely))
+
+
+  # creating midpoint values of hbound and lbound to serve as a reference point
+  fix$shirt_mid <- (fix$shirt_lbound + fix$shirt_hbound) / 2
+  fix$paint_mid <- (fix$paint_lbound + fix$paint_hbound) / 2
+  fix$salad_mid <- (fix$salad_lbound + fix$salad_hbound) / 2
+  
+  # purchasing power - take WTP as a function of purchasing power
+  fix$shirt_wtp <- fix$shirt_mid / fix$pur_pwr * fix$shirt_likely
+  fix$paint_wtp <- fix$paint_mid / fix$pur_pwr * fix$paint_likely
+  fix$salad_wtp <- fix$salad_mid / fix$pur_pwr * fix$salad_likely
+ 
+``` 
+
+
+```{r}  
+# SUMMARY STATISTICS 
+
+  # histogram of age
+    # differing on country
+    ggplot(big, aes(x = age)) +
+    geom_histogram(fill = "white", colour = "black", bins = 9) +
+    labs(x = "Age", y = "Frequency", title = "Age Distributions Differing on Country of Respondent") +
+    facet_grid(country ~ .)
+    #shows that distributions are relatively similar, with the most common aspect of the distribution being the         majority of respondents in the 20-30 age range (the 'what' dataset has more repondents stretching towards         the 40-50 range)
+
+    # differing on pricing scenario
+    ggplot(big, aes(x = age)) +
+    geom_histogram(fill = "white", colour = "black", bins = 9) +
+    labs(x = "Age", y = "Frequency", title = "Age Distributions Differing on Payment Scenario") +  
+    facet_grid(test_type ~ .)
+    
+  # histogram of education levels
+  ggplot(subset(big, test_type == "PWYW"), aes(x = educ)) + geom_bar() + labs(x = "Highest education level   achieved or completed", y = "Frequency", title = "Education levels of PWYW respondents") + theme(axis.text.x=element_text(angle = -90, hjust = 0))
+  
+  ggplot(subset(big, test_type == "FP"), aes(x = educ)) + geom_bar() + labs(x = "Highest education level achieved or completed", y = "Frequency", title = "Education levels of Fixed Price respondents") + theme(axis.text.x=element_text(angle = -90, hjust = 0))
+    
+  # histogram of ethnicities
+    ggplot(big, aes(x = ethnicity)) + geom_bar() + facet_grid(test_type ~ .) + labs(x = "Ethnicity", y = "Frequency", title = "Ethnicities of PWYW and Fixed Price respondents") + theme(axis.text.x=element_text(angle = -90, hjust = 0.5))
+       
+  # revenue comparison(take the amount, multiply it to the _commit factor, and sum all values. Compare this to the midpoint of each FP entry, multiplied to the _commit factor, summing all values)
+
+#SHIRTSHIRTSHIRTSHIRTSHIRTSHIRTSHIRTSHIRTSHIRTSHIRTSHIRT   
+    fix$shirt_commit <- as.numeric(fix$shirt_commit)
+    shirt.psm <- psm_analysis(toocheap = "shirt_end", cheap = "shirt_lbound", expensive = "shirt_hbound", tooexpensive = "shirt_exp", data = fix, pi_cheap = "shirt_commit", pi_expensive = "shirt_commit")
+    
+    shirtpsmplot <-  ggplot(data = shirt.psm$data_vanwestendorp, aes(x = price)) +
+  annotate(geom = "rect", # shaded background area for range of acceptable prices
+           xmin = shirt.psm$pricerange_lower,
+           xmax = shirt.psm$pricerange_upper,
+           ymin = 0, ymax = Inf,
+           fill="grey50", alpha = 0.3) +
+  geom_line(aes(y = ecdf_toocheap, # line: too cheap
+                colour = "too cheap",
+                linetype = "too cheap"),
+            size= 1) +
+  geom_line(aes(y = ecdf_tooexpensive, # line: too expensive
+                colour = "too expensive",
+                linetype = "too expensive"),
+            size = 1) + 
+  geom_line(aes(y = ecdf_not_cheap, # line: not cheap
+                colour = "not cheap",
+                linetype = "not cheap"),
+            size = 1) +
+  geom_line(aes(y = ecdf_not_expensive, # line: not expensive
+                colour = "not expensive",
+                linetype = "not expensive"),
+            size = 1) + 
+  annotate(geom = "point", # Indifference Price Point (intersection of "cheap" and "expensive")
+           x = shirt.psm$idp, 
+           y = shirt.psm$data_vanwestendorp$ecdf_not_cheap[shirt.psm$data_vanwestendorp$price == shirt.psm$idp],
+           size = 5,
+           shape = 18,
+           colour = "#009E73") + 
+  annotate(geom = "point", # Optimal Price Point (intersection of "too cheap" and "too expensive")
+           x = shirt.psm$opp, 
+           y = shirt.psm$data_vanwestendorp$ecdf_toocheap[shirt.psm$data_vanwestendorp$price == shirt.psm$opp],
+           size = 3,
+           shape = 17,
+           colour = "#009E73")
+
+
+# Labels and Colours
+shirtpsmplot +
+  labs(x = "Price",
+       y = "Share of Respondents (0-1)",
+       title = "Price Sensitivity Meter Plot For a White Shirt",
+       caption = "Shaded area: range of acceptable prices\nProjected revenue: 1788-1987 USD")  + 
+  scale_colour_manual(name = "Legend",
+                      values = c("too cheap" = "#009E73",
+                                 "not cheap" = "#009E73",
+                                 "not expensive" = "#D55E00",
+                                 "too expensive" = "#D55E00")) + 
+  scale_linetype_manual(name="Legend",
+                        values = c("too cheap" = "dotted",
+                                   "not cheap" = "solid",
+                                   "not expensive" = "solid",
+                                   "too expensive" = "dotted")) + 
+  annotate(geom = "text", # Label of Indifference Price Point
+           x = shirt.psm$idp + 1.5, 
+           y = shirt.psm$data_vanwestendorp$ecdf_not_cheap[shirt.psm$data_vanwestendorp$price == shirt.psm$idp],
+           label = paste("IDP: ", shirt.psm$idp)) + 
+  annotate(geom = "text", # Label of Optimal Price Point
+           x = shirt.psm$opp + 1.5,
+           y = shirt.psm$data_vanwestendorp$ecdf_toocheap[shirt.psm$data_vanwestendorp$price == shirt.psm$opp],
+           label = paste("OPP: ", shirt.psm$opp)) +
+  theme_minimal()
+
+    # take the value of the IDP and the share of respondents to obtain total revenue
+    revpsmshirt <- shirt.psm$data_vanwestendorp$ecdf_not_cheap[shirt.psm$data_vanwestendorp$price == shirt.psm$idp] * shirt.psm$idp * length(fix$shirt_commit)
+  
+    print(revpsmshirt)
+
+    # compared to PWYW 
+    # histogram of revenue for those with the capacity to pay
+    hist(subset(what, shirt_pwyw <= pur_pwr)$shirt_pwyw * subset(what, shirt_pwyw <= pur_pwr)$shirt_likely, main = "Histogram of pay-what-you-want shirt revenue per person", xlab = "Amount offered", ylab = "Number of buyers")
+    legend("topright", "Projected revenue: 2807 USD \nwith an average per-person payment of 21 USD", cex = 0.8)
+    # (trimmed to only responses whose payment offers are less than or equal to their capacity to pay (otherwise, it's just a conception of value but not an actual payment offer)) 
+    print(sum(subset(what, shirt_pwyw <= pur_pwr)$shirt_pwyw * subset(what, shirt_pwyw <= pur_pwr)$shirt_likely))
+
+#PAINTPAINTPAINTPAINTPAINTPAINTPAINTPAINTPAINTPAINTPAINTPAINT    
+    fix$paint_commit <- as.numeric(fix$paint_commit)
+    paint.psm <- psm_analysis(toocheap = "paint_end", cheap = "paint_lbound", expensive = "paint_hbound", tooexpensive = "paint_exp", data = fix, pi_cheap = "paint_commit", pi_expensive = "paint_commit")
+    
+    paintpsmplot <-  ggplot(data = paint.psm$data_vanwestendorp, aes(x = price)) +
+  annotate(geom = "rect", # shaded background area for range of acceptable prices
+           xmin = paint.psm$pricerange_lower,
+           xmax = paint.psm$pricerange_upper,
+           ymin = 0, ymax = Inf,
+           fill="grey50", alpha = 0.3) +
+  geom_line(aes(y = ecdf_toocheap, # line: too cheap
+                colour = "too cheap",
+                linetype = "too cheap"),
+            size= 1) +
+  geom_line(aes(y = ecdf_tooexpensive, # line: too expensive
+                colour = "too expensive",
+                linetype = "too expensive"),
+            size = 1) + 
+  geom_line(aes(y = ecdf_not_cheap, # line: not cheap
+                colour = "not cheap",
+                linetype = "not cheap"),
+            size = 1) +
+  geom_line(aes(y = ecdf_not_expensive, # line: not expensive
+                colour = "not expensive",
+                linetype = "not expensive"),
+            size = 1) + 
+  annotate(geom = "point", # Indifference Price Point (intersection of "cheap" and "expensive")
+           x = paint.psm$idp, 
+           y = paint.psm$data_vanwestendorp$ecdf_not_cheap[paint.psm$data_vanwestendorp$price == paint.psm$idp],
+           size = 5,
+           shape = 18,
+           colour = "#009E73") + 
+  annotate(geom = "point", # Optimal Price Point (intersection of "too cheap" and "too expensive")
+           x = paint.psm$opp, 
+           y = paint.psm$data_vanwestendorp$ecdf_toocheap[paint.psm$data_vanwestendorp$price == paint.psm$opp],
+           size = 3,
+           shape = 17,
+           colour = "#009E73")
+
+
+# Labels and Colours
+paintpsmplot +
+  labs(x = "Price",
+       y = "Share of Respondents (0-1)",
+       title = "Price Sensitivity Meter Plot for a Painting",
+       caption = "Shaded area: range of acceptable prices\nProjected revenue: 3804 USD")  + 
+  scale_colour_manual(name = "Legend",
+                      values = c("too cheap" = "#009E73",
+                                 "not cheap" = "#009E73",
+                                 "not expensive" = "#D55E00",
+                                 "too expensive" = "#D55E00")) + 
+  scale_linetype_manual(name="Legend",
+                        values = c("too cheap" = "dotted",
+                                   "not cheap" = "solid",
+                                   "not expensive" = "solid",
+                                   "too expensive" = "dotted")) + 
+  annotate(geom = "text", # Label of Indifference Price Point
+           x = paint.psm$idp + 1.5, 
+           y = paint.psm$data_vanwestendorp$ecdf_not_cheap[paint.psm$data_vanwestendorp$price == paint.psm$idp],
+           label = paste("IDP: ", paint.psm$idp)) + 
+  annotate(geom = "text", # Label of Optimal Price Point
+           x = paint.psm$opp + 1.5,
+           y = paint.psm$data_vanwestendorp$ecdf_toocheap[paint.psm$data_vanwestendorp$price == paint.psm$opp],
+           label = paste("OPP: ", paint.psm$opp)) +
+  theme_minimal()
+
+    # take the value of the IDP and the share of respondents to obtain total revenue
+    revpsmpaint <- paint.psm$data_vanwestendorp$ecdf_not_cheap[paint.psm$data_vanwestendorp$price == paint.psm$idp] * paint.psm$idp * length(fix$paint_commit)
+  
+    print(revpsmpaint)
+
+    # compared to PWYW 
+    # histogram of revenues for those with capacity to pay
+    hist(subset(what, paint_pwyw <= pur_pwr)$paint_pwyw * subset(what, paint_pwyw <= pur_pwr)$paint_likely, main = "Histogram of pay-what-you-want painting revenue per person", xlab = "Amount offered", ylab = "Number of buyers")
+    legend("topright", "Projected revenue: 4208 USD \nwith an average per-person payment of 32 USD", cex = 0.8)
+    #(trimmed to only responses whose payment offers are less than or equal to their capacity to pay (otherwise, it's just a conception of value but not an actual payment offer)) 
+    print(sum(subset(what, paint_pwyw <= pur_pwr)$paint_pwyw * subset(what, paint_pwyw <= pur_pwr)$paint_likely))    
+#SALADSALADSALADSALADSALADSALADSALADSALADSALADSALADSALADSALADSALAD       
+    fix$salad_commit <- as.numeric(fix$salad_commit)
+    salad.psm <- psm_analysis(toocheap = "salad_end", cheap = "salad_lbound", expensive = "salad_hbound", tooexpensive = "salad_exp", data = fix, pi_cheap = "salad_commit", pi_expensive = "salad_commit")
+
+    saladpsmplot <-  ggplot(data = salad.psm$data_vanwestendorp, aes(x = price)) +
+  annotate(geom = "rect", # shaded background area for range of acceptable prices
+           xmin = salad.psm$pricerange_lower,
+           xmax = salad.psm$pricerange_upper,
+           ymin = 0, ymax = Inf,
+           fill="grey50", alpha = 0.3) +
+  geom_line(aes(y = ecdf_toocheap, # line: too cheap
+                colour = "too cheap",
+                linetype = "too cheap"),
+            size= 1) +
+  geom_line(aes(y = ecdf_tooexpensive, # line: too expensive
+                colour = "too expensive",
+                linetype = "too expensive"),
+            size = 1) + 
+  geom_line(aes(y = ecdf_not_cheap, # line: not cheap
+                colour = "not cheap",
+                linetype = "not cheap"),
+            size = 1) +
+  geom_line(aes(y = ecdf_not_expensive, # line: not expensive
+                colour = "not expensive",
+                linetype = "not expensive"),
+            size = 1) + 
+  annotate(geom = "point", # Indifference Price Point (intersection of "cheap" and "expensive")
+           x = salad.psm$idp, 
+           y = salad.psm$data_vanwestendorp$ecdf_not_cheap[salad.psm$data_vanwestendorp$price == salad.psm$idp],
+           size = 5,
+           shape = 18,
+           colour = "#009E73") + 
+  annotate(geom = "point", # Optimal Price Point (intersection of "too cheap" and "too expensive")
+           x = salad.psm$opp, 
+           y = salad.psm$data_vanwestendorp$ecdf_toocheap[salad.psm$data_vanwestendorp$price == salad.psm$opp],
+           size = 3,
+           shape = 17,
+           colour = "#009E73")
+
+
+# Labels and Colours
+saladpsmplot +
+  labs(x = "Price",
+       y = "Share of Respondents (0-1)",
+       title = "Price Sensitivity Meter Plot for a Salad",
+       caption = "Shaded area: range of acceptable prices\nProjected revenue: 1041-1353 USD")  + 
+  scale_colour_manual(name = "Legend",
+                      values = c("too cheap" = "#009E73",
+                                 "not cheap" = "#009E73",
+                                 "not expensive" = "#D55E00",
+                                 "too expensive" = "#D55E00")) + 
+  scale_linetype_manual(name="Legend",
+                        values = c("too cheap" = "dotted",
+                                   "not cheap" = "solid",
+                                   "not expensive" = "solid",
+                                   "too expensive" = "dotted")) + 
+  annotate(geom = "text", # Label of Indifference Price Point
+           x = salad.psm$idp + 1.5, 
+           y = salad.psm$data_vanwestendorp$ecdf_not_cheap[salad.psm$data_vanwestendorp$price == salad.psm$idp],
+           label = paste("IDP: ", salad.psm$idp)) + 
+  annotate(geom = "text", # Label of Optimal Price Point
+           x = salad.psm$opp + 1.5,
+           y = salad.psm$data_vanwestendorp$ecdf_toocheap[salad.psm$data_vanwestendorp$price == salad.psm$opp],
+           label = paste("OPP: ", salad.psm$opp)) +
+  theme_minimal()
+
+    # take the value of the IDP and the share of respondents to obtain total revenue
+    revpsmsalad <- salad.psm$data_vanwestendorp$ecdf_not_cheap[salad.psm$data_vanwestendorp$price == salad.psm$idp] * salad.psm$idp * length(fix$salad_commit)
+  
+    print(revpsmsalad)
+
+    # compared to PWYW 
+    # histogram of revenues for those with capacity to pay
+    hist(subset(what, salad_pwyw <= pur_pwr)$salad_pwyw * subset(what, salad_pwyw <= pur_pwr)$salad_likely, main = "Histogram of pay-what-you-want salad revenue per person", xlab = "Amount offered", ylab = "Number of buyers")
+    legend("topright", "Projected revenue: 2122 USD \nwith an average per-person payment of 15 USD", cex = 0.8)
+    #(trimmed to only responses whose payment offers are less than or equal to their capacity to pay (otherwise, it's just a conception of value but not an actual payment offer)) 
+    print(sum(subset(what, salad_pwyw <= pur_pwr)$salad_pwyw * subset(what, salad_pwyw <= pur_pwr)$salad_likely))
+    
+#important: the pwyw histograms always return a higher total revenue and a larger max price paid because it does not set a higher or a lower limit to the amount paid. this aligns exactly with Morkes(2013)'s claim that PWYW "lowers barriers to entry"    
+    
+    # histograms of stated payment preferences as a ratio of purchasing power - perhaps this shows desire for a product? 
+    hist(what$shirt_pwyw/what$pur_pwr,  
+        main = "Histogram of PWYW group's \n normalized payment offer for a white shirt", 
+        xlab = "Percentage of disposable income offered")
+    hist(fix$shirt_mid/fix$pur_pwr,
+        main = "Histogram of fixed-price group's \n normalized payment offer for a white shirt", 
+        xlab = "Percentage of disposable income offered")
+    hist(what$paint_pwyw/what$pur_pwr,
+        main = "Histogram of PWYW group's \n normalized payment offer for a painting", 
+        xlab = "Percentage of disposable income offered")
+    hist(fix$shirt_mid/fix$pur_pwr,
+        main = "Histogram of fixed-price group's \n normalized payment offer for a painting", 
+        xlab = "Percentage of disposable income offered")
+    hist(what$salad_pwyw/what$pur_pwr,
+        main = "Histogram of PWYW group's \n normalized payment offer for a salad", 
+        xlab = "Percentage of disposable income offered")
+    hist(fix$salad_mid/fix$pur_pwr,
+        main = "Histogram of fixed-price group's \n normalized payment offer for a salad", 
+        xlab = "Percentage of disposable income offered")
+
+```
+
+
+```{r}
+# OCEAN TRAIT COMPARISONS 
+
+  #creating OCEAN variables
+  big$O <- big$Opos - big$Oneg + 6
+  big$C <- big$Cpos - big$Cneg + 6
+  big$E <- big$Epos - big$Eneg + 6 
+  big$A <- big$Apos - big$Aneg + 6
+  big$N <- big$Npos - big$Nneg + 6 
+
+    #running the exact same comparison between PWYW and FP respondents show that the types of answers of participants are more different than variation between country respondents
+  
+  
+#comparing OCEAN traits between US and IN respondents  
+  #Openness
+   ggplot(big, aes(x = O)) +
+     geom_histogram(fill = "white", colour = "black", bins = 9) +
+     labs(x = "Openness", y = "Frequency", title = "Distribution of Personality Trait Scores for Openness \n Separated by Country Demographics") +
+     theme(plot.title = element_text(hjust = 0.5)) +
+     facet_grid(country ~ .)
+   
+  #Conscienctiousness
+    ggplot(big, aes(x = C)) +
+     geom_histogram(fill = "white", colour = "black", bins = 9) +
+    labs(x = "Conscientiousness", y = "Frequency", title = "Distribution of Personality Trait Scores for Conscientiousness \n Separated by Country Demographics") +
+    theme(plot.title = element_text(hjust = 0.5)) +
+     facet_grid(country ~ .)
+   
+  #Extraversion
+    ggplot(big, aes(x = E)) +
+     geom_histogram(fill = "white", colour = "black", bins = 9) +
+     labs(x = "Extraversion", y = "Frequency", title = "Distribution of Personality Trait Scores for Extraversion \n Separated by Country Demographics") +
+     theme(plot.title = element_text(hjust = 0.5)) +
+     facet_grid(country ~ .)    
+    
+  #Agreeableness
+    ggplot(big, aes(x = A)) +
+     geom_histogram(fill = "white", colour = "black", bins = 9) +
+     labs(x = "Agreeableness", y = "Frequency", title = "Distribution of Personality Trait Scores for Agreeableness \n Separated by Country Demographics") +
+     theme(plot.title = element_text(hjust = 0.5)) +
+     facet_grid(country ~ .)
+    
+  #Neuroticism
+    ggplot(big, aes(x = N)) +
+     geom_histogram(fill = "white", colour = "black", bins = 9) +
+     labs(x = "Neuroticism", y = "Frequency", title = "Distribution of Personality Trait Scores for Neuroticism \n Separated by Country Demographics") +
+     theme(plot.title = element_text(hjust = 0.5)) +
+     facet_grid(country ~ .)
+    
+  #the similarities of personality traits between IN and US responses shows that differences in the outcome are not simply caused by variations of personality traits at the country level, but rather variations of personality traits at the individual level - this however does not show that the effect of OCEAN on payment or wtp is the same magnitude between the US and IN  
+```
+
+
+```{r}
+# checking linear regression assumptions - this proves that we needed to remove outliers in 'pwyw' values to lessen the effects of outliers causing strong right skew
+Tshirt <-glm(shirt_pwyw ~ age + female + asian + caucasian + edtier + pur_pwr + O + C + E + A + N, data = what)
+plot(Tshirt)
+
+Tpaint <-glm(paint_pwyw ~ age + female + asian + caucasian + edtier + pur_pwr + O + C + E + A + N, data = what)
+plot(Tpaint)
+
+Tsalad <-glm(salad_pwyw ~ age + female + asian + caucasian + edtier + pur_pwr + O + C + E + A + N, data = what)
+plot(Tsalad)
+  # conversely, outliers will also be removed from the fixed price dataset to enable similar comparisons
+
+# NEW MODEL SPECIFICATION: LINEAR RELATIONSHIP WITH OUTLIERS REMOVED
+
+# additional modification: instead of filtering out by product, do a sweeping removal of all individuals who overpaid 
+sweep_what <- subset(what, shirt_pwyw <= pur_pwr & paint_pwyw <= pur_pwr & salad_pwyw <= pur_pwr)
+sweep_fix <- subset(fix, shirt_mid <= pur_pwr & paint_mid <= pur_pwr & salad_mid <= pur_pwr)
+
+# NAIVE REGRESSION of ocean traits + demographic controls to predict WTP (PWYW)
+  # shirt wtp
+naiveshirt <- glm(sweep_what$shirt_pwyw ~ age + female + asian + caucasian + india + edtier + pur_pwr + O + C + E + A + N, data = sweep_what)
+summary(naiveshirt)
+    #female significant, caucasian highly significant, asian almost
+
+naiveshirtwtp <- glm(sweep_what$shirt_wtp ~ age + female + asian + caucasian + india + edtier + O + C + E + A + N, data = sweep_what)
+summary(naiveshirtwtp)
+    #A significant
+
+  # painting wtp
+naivepaint <- glm(sweep_what$paint_pwyw ~ age + female + asian + caucasian + india + edtier + pur_pwr + O + C + E + A + N, data = sweep_what)
+summary(naivepaint)
+    #asian, caucasian, A significant, pur_pwr super significant, age & N almost significant 
+
+naivepaintwtp <- glm(sweep_what$paint_wtp ~ age + female + asian + caucasian + india + edtier + O + C + E + A + N, data = sweep_what)
+summary(naivepaintwtp)
+    # A significant
+
+  # salad wtp
+naivesalad <- glm(sweep_what$salad_pwyw ~ age + female + asian + caucasian + india + edtier + pur_pwr + O + C + E + A + N, data = sweep_what)
+summary(naivesalad)
+    #female, caucasian significant, A highly significant
+
+naivesaladwtp <- glm(sweep_what$salad_wtp ~ age + female + asian + caucasian + india + edtier + O + C + E + A + N, data = sweep_what)
+summary(naivesaladwtp)
+    #A significant
+
+
+# NAIVE REGRESSION of ocean traits + demographic controls to predict WTP (FIXED PRICE)
+
+# SHIRT
+foolshirt <- glm(sweep_fix$shirt_mid ~ age + female + asian + caucasian + india + edtier + pur_pwr + O + C + E + A + N, data = sweep_fix)
+summary(foolshirt)
+    #none, O almost significant
+
+foolshirtwtp <- glm(sweep_fix$shirt_wtp ~ age + female + asian + caucasian + india + edtier + O + C + E + A + N, data = sweep_fix)
+summary(foolshirtwtp)
+    #none, A almost significant
+
+# PAINTING
+foolpaint <- glm(sweep_fix$paint_mid ~ age + female + asian + caucasian + india + edtier + pur_pwr + O + C + E + A + N, data = sweep_fix)
+summary(foolpaint)
+    #pur_pwr significant
+
+foolpaintwtp <- glm(sweep_fix$paint_wtp ~ age + female + asian + caucasian + india + edtier + O + C + E + A + N, data = sweep_fix)
+summary(foolpaintwtp)
+    #none, A almost significant
+
+# SALAD
+foolsalad <- glm(sweep_fix$salad_mid ~ age + female + asian + caucasian + india + edtier + pur_pwr + O + C + E + A + N, data = sweep_fix)
+summary(foolsalad)
+    #none
+
+foolsaladwtp <- glm(sweep_fix$salad_wtp ~ age + female + asian + caucasian + india + edtier + O + C + E + A + N, data = sweep_fix)
+summary(foolsaladwtp)
+    #none, A almost significant
+```
+
+
+
+```{r}
+# ORIGINAL MODEL SPECIFICATION (LINEAR-LOG MODEL)
+  # shirt wtp
+naiveshirt <- glm(log(shirt_pwyw) ~ age + female + asian + african + caucasian + natam + india + edtier + pur_pwr + O + C + E + A + N, data = what)
+summary(naiveshirt)
+    #edtier, C significant
+
+naiveshirtwtp <- glm(log(shirt_wtp) ~ age + female + asian + african + caucasian + natam + india + edtier + O + C + E + A + N, data = what)
+summary(naiveshirtwtp)
+    #none
+
+  # painting wtp
+naivepaint <- glm(log(paint_pwyw) ~ age + female + asian + african + caucasian + natam + india + edtier + pur_pwr + O + C + E + A + N, data = what)
+summary(naivepaint)
+    #edtier highly significant, age significant, A almost significant
+
+naivepaintwtp <- glm(log(paint_wtp) ~ age + female + asian + african + caucasian + natam + india + edtier + O + C + E + A + N, data = what)
+summary(naivepaintwtp)
+    #A significant
+
+  # salad wtp
+naivesalad <- glm(log(salad_pwyw) ~ age + female + asian + african + caucasian + natam + india + edtier + pur_pwr + O + C + E + A + N, data = what)
+summary(naivesalad)
+    #C significant, age almost significant
+
+naivesaladwtp <- glm(log(salad_wtp) ~ age + female + asian + african + caucasian + natam + india + edtier + O + C + E + A + N, data = what)
+summary(naivesaladwtp)
+    #A significant
+
+
+# NAIVE REGRESSION of ocean traits + demographic controls to predict WTP (FIXED PRICE)
+
+foolshirt <- glm(log(shirt_mid) ~ age + female + asian + african + caucasian + natam + india + edtier + pur_pwr + O + C + E + A + N, data = fix)
+summary(foolshirt)
+    #O significant - starting to differ from PWYW, which was mainly C and A (this p-value was almost insignificant, though)
+
+foolshirtwtp <- glm(log(shirt_wtp) ~ age + female + asian + african + caucasian + natam + india + edtier + O + C + E + A + N, data = fix)
+summary(foolshirtwtp)
+    #india significant, natam, O almost significant - this is BIG, as this starts to show differences between country responses
+
+foolpaint <- glm(log(paint_mid) ~ age + female + asian + african + caucasian + natam + india + edtier + pur_pwr + O + C + E + A + N, data = fix)
+summary(foolpaint)
+    #india significant
+
+foolpaintwtp <- glm(log(paint_wtp) ~ age + female + asian + african + caucasian + natam + india + edtier + O + C + E + A + N, data = fix)
+summary(foolpaintwtp)
+    #caucasian highly significant, asian, african significant, natam almost significant
+
+foolsalad <- glm(log(salad_mid) ~ age + female + asian + african + caucasian + natam + india + edtier + pur_pwr + O + C + E + A + N, data = fix)
+summary(foolsalad)
+    #none (O almost significant)
+
+foolsaladwtp <- glm(log(salad_wtp) ~ age + female + asian + african + caucasian + natam + india + edtier + O + C + E + A + N, data = fix)
+summary(foolsaladwtp)
+    #india highly significant
+```
+
+```{r}
+# SENSITIVITY ANALYSIS
+
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
